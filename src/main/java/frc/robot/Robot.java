@@ -9,6 +9,7 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PWMVictorSPX;
+import edu.wpi.first.wpilibj.SpeedControllerGroup;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
@@ -21,8 +22,11 @@ import edu.wpi.first.wpilibj.drive.DifferentialDrive;
  * directory.
  */
 public class Robot extends TimedRobot {
-  private final DifferentialDrive m_robotDrive
-      = new DifferentialDrive(new PWMVictorSPX(0), new PWMVictorSPX(1));
+  //private final DifferentialDrive m_robotDrive
+  //    = new DifferentialDrive(new PWMVictorSPX(0), new PWMVictorSPX(1));
+  private final SpeedControllerGroup m_left = new SpeedControllerGroup(new PWMVictorSPX(0), new PWMVictorSPX(1));
+  private final SpeedControllerGroup m_right = new SpeedControllerGroup(new PWMVictorSPX(2), new PWMVictorSPX(3));
+  private final DifferentialDrive m_drive = new DifferentialDrive(m_left, m_right);
   private final Joystick m_stick = new Joystick(0);
   private final Timer m_timer = new Timer();
 
@@ -50,9 +54,9 @@ public class Robot extends TimedRobot {
   public void autonomousPeriodic() {
     // Drive for 2 seconds
     if (m_timer.get() < 2.0) {
-      m_robotDrive.arcadeDrive(0.5, 0.0); // drive forwards half speed
+      m_drive.arcadeDrive(0.5, 0.0); // drive forwards half speed
     } else {
-      m_robotDrive.stopMotor(); // stop robot
+      m_drive.stopMotor(); // stop robot
     }
   }
 
@@ -68,7 +72,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-    m_robotDrive.arcadeDrive(m_stick.getY(), m_stick.getX());
+    m_drive.arcadeDrive(-m_stick.getY()/2, m_stick.getX()/2);
   }
 
   /**
