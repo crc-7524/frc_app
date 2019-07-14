@@ -7,12 +7,14 @@
 
 package frc.robot;
 
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PWMVictorSPX;
 import edu.wpi.first.wpilibj.SpeedControllerGroup;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -29,12 +31,14 @@ public class Robot extends TimedRobot {
     private final DifferentialDrive m_drive = new DifferentialDrive(m_left, m_right);
     private final Joystick m_stick = new Joystick(0);
     private final Timer m_timer = new Timer();
+    private static int circle = 0;
     /**
      * This function is run when the robot is first started up and should be
      * used for any initialization code.
      */
     @Override
     public void robotInit() {
+        CameraServer.getInstance().startAutomaticCapture(0);
     }
 
     /**
@@ -73,9 +77,14 @@ public class Robot extends TimedRobot {
     public void teleopPeriodic() {
       double x = m_stick.getX();
       double y = m_stick.getY();
-      System.out.println("X: "+x);
-      System.out.println("y: "+y);
-      m_drive.arcadeDrive(-m_stick.getY() / 2, m_stick.getX() / 2);
+      m_drive.arcadeDrive(m_stick.getY() /4*3, m_stick.getX()/4*3 );
+      if (circle == 24) {
+        circle = 0;
+        SmartDashboard.putNumber("x", x);
+        SmartDashboard.putNumber("y", y);
+        //System.out.println("X: "+x);
+        //System.out.println("y: "+y);
+      }else circle ++;
       /*double[] speed = getSpeed(m_stick.getX(), m_stick.getY());
       System.out.println("output x: "+speed[0]);
       System.out.println("output y: "+speed[1]);
