@@ -18,15 +18,17 @@ import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.AnalogInput;
-import edu.wpi.first.wpilibj.CameraServer;
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.wpilibj.PowerDistributionPanel;
 
 import com.ctre.phoenix.motorcontrol.can.VictorSPX;
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 
-import com.ckcyberpack.lib.FRCPixy2;
-import com.ckcyberpack.lib.FRCPixyBlock;
+import io.github.pseudoresonance.pixy2api.Pixy2;
+import io.github.pseudoresonance.pixy2api.Pixy2.LinkType;
+
 
 /**
  * This is a demo program showing the use of the RobotDrive class, specifically
@@ -38,20 +40,20 @@ public class Robot extends TimedRobot {
 
   Timer m_Timer = new Timer();
 
-  FRCPixy2 m_pixy2 = new FRCPixy2(edu.wpi.first.wpilibj.SPI.Port.kOnboardCS0);
-
   AnalogInput m_switcher = new AnalogInput(0);
 
   TalonSRX m_LifterMain = new TalonSRX(2);
   TalonSRX m_LifterFollower = new TalonSRX(3);
-
-  private Joystick m_leftJoystick = new Joystick(0);
-  private Joystick m_rightJoystick = new Joystick(1);
-  private Joystick m_lifterJoystick = new Joystick(2);
 /*
-  private Joystick m_testJoystick = new Joystick(3);
-  private Joystick m_testJoystick2 = new Joystick(4);
+  private Joystick m_leftJoystick = new Joystick(1);
+  private Joystick m_rightJoystick = new Joystick(0);
+
 */
+  //private Joystick m_lifterJoystick = new Joystick(2);
+  //private Joystick m_testJoystick = new Joystick(3);
+  private Joystick m_xbox = new Joystick(2);
+  private Joystick m_testJoystick2 = new Joystick(4);
+
   private static final String kDefaultAuto = "Default";
   private static final String kCustomAuto = "My Auto";
   private String m_autoSelected;
@@ -59,8 +61,10 @@ public class Robot extends TimedRobot {
 
   private double kZeroPosition = 0;
   private double kSetPoint = 0;
-  private double kJoystickGain = 1.8;
-  private double kSlowRate = 0.75;
+  private double kJoystickGain = 1.75;
+  private double kNormalRate = 0.55;
+  private double kRate = kNormalRate;
+  private double kFastRate = 0.9;
 
   private WPI_TalonSRX m_leftMain = new WPI_TalonSRX(0);
   private VictorSPX m_leftFollower1 = new VictorSPX(4);
@@ -76,26 +80,38 @@ public class Robot extends TimedRobot {
   DifferentialDrive m_robot = new DifferentialDrive(m_leftMain, m_rightMain);
 
   Compressor m_compressor = new Compressor(0);
-  
-  // proportional speed constant
-  private double kP = 0.025;//,kPIncreace = 0.01/ 100;
-  private double kI = 0.0001;    //,kIIncreace = 0.0001 / 100;
-  private double kD = 0.045;//,kDIncreace = 0.001 / 100;
 
   private MyPID m_lifterPID = new MyPID("lifterPID");
 
   DoubleSolenoid m_doubleSolenoid = new DoubleSolenoid(0, 1);
 
-  private boolean kLastBtnX = false;
-  private boolean kLastSwitcher = false;
+  PowerDistributionPanel m_pdp = new PowerDistributionPanel();
+
+  private boolean kLastSolenoidBtn = false;
   private boolean kSolenoid = true;//"True" means pull up or forward.
 
-  private double kIntakePower = 0.35;
+  private double kIntakeGreyPower = 0.95;
+  private double kIntakeGreenPower = 0.5;
 
-  private boolean kLastLifterBtn = false;
+  // proportional speed constant
+  private double kP = 0.035;//,kPIncreace = 0.01/ 100;
+  private double kI = 0.0;    //,kIIncreace = 0.0001 / 100;
+  private double kD = 0.048;//,kDIncreace = 0.001 / 100;
+  
+  Pixy2 pixy = Pixy2.createInstance(LinkType.SPI);
+
+  MyPID m_pixyPID = new MyPID("pixy");
+
+  private double kRightSpeed;
+  private double kLeftSpeed;
 
   @Override
   public void robotInit() {
+    pixy.init();
+
+    m_pixyPID.setPID(0.015, 0, 0, 0);
+
+    System.out.println("[status]robotInit() is running.");
     CameraServer.getInstance().startAutomaticCapture();
 
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
@@ -103,7 +119,7 @@ public class Robot extends TimedRobot {
     SmartDashboard.putData("Auto choices", m_chooser);
 
     m_lifterPID.setPID(kP, kI, kD, 0);
-    m_lifterPID.setOutputRange(0.65, -0.2);
+    m_lifterPID.setOutputRange(0.95, -0.3);
 
     m_LifterMain.configFactoryDefault();
     m_LifterFollower.configFactoryDefault();
@@ -133,19 +149,73 @@ public class Robot extends TimedRobot {
     m_robot.setRightSideInverted(false);
 
     m_compressor.setClosedLoopControl(true);
-
-    m_doubleSolenoid.set(DoubleSolenoid.Value.kForward);
+    System.out.println("robotInit, double solenoid set forward.");
+    m_doubleSolenoid.set(Value.kReverse);
   }
 
   @Override
   public void robotPeriodic() {
+    //Press right shoot to collect objects.
+    if(m_testJoystick2.getRawButton(6)){
+      m_intakeGreen.set(kIntakeGreenPower);
+      m_intakeGrey.set(kIntakeGreyPower);
+      SmartDashboard.putString("Intake status", "Collecting, ");
+    }else if(m_testJoystick2.getRawButton(5)){ //Press left key 4 to throw objects.
+      m_intakeGreen.set(-kIntakeGreenPower);
+      m_intakeGrey.set(-kIntakeGreyPower);
+      SmartDashboard.putString("Intake status", "Throwing, ");
+    }else{
+      m_intakeGreen.stopMotor();
+      m_intakeGrey.stopMotor();;
+    }
+
+    //Press button 4 to change solenoid's status
+    boolean solenoidBtn = m_testJoystick2.getRawButton(4);
+    if(!kLastSolenoidBtn && solenoidBtn){
+      kSolenoid = !kSolenoid;
+      if(kSolenoid){
+        m_doubleSolenoid.set(Value.kForward);
+      }else{
+        m_doubleSolenoid.set(Value.kReverse);
+      }
+    }
+    kLastSolenoidBtn = solenoidBtn;
+    SmartDashboard.putBoolean("Solenoid", kSolenoid);
+
+    //Fast and slow btn.
+    if(m_xbox.getRawButton(5)){
+      kRate = kFastRate;
+    }else{
+      kRate = kNormalRate;
+    }
+    
+    kRightSpeed = joystickOutput(-m_xbox.getRawAxis(5), 0.05) * kRate;
+    kLeftSpeed = joystickOutput(-m_xbox.getRawAxis(1), 0.05) * kRate;
+    
+    SmartDashboard.putNumber("left speed", kLeftSpeed);
+    SmartDashboard.putNumber("right speed", kRightSpeed);
+
+    //Follow
+    m_leftFollower1.set(ControlMode.PercentOutput, m_leftMain.getMotorOutputPercent());
+    m_rightFollower1.set(ControlMode.PercentOutput, m_rightMain.getMotorOutputPercent());
+
+    SmartDashboard.putNumber("Left 1 current", m_pdp.getCurrent(0));
+    SmartDashboard.putNumber("Left 2 current", m_pdp.getCurrent(1));
+    SmartDashboard.putNumber("Left 3 current", m_pdp.getCurrent(2));
+    SmartDashboard.putNumber("Right 1 current", m_pdp.getCurrent(15));
+    SmartDashboard.putNumber("Right 2 current", m_pdp.getCurrent(14));
+    SmartDashboard.putNumber("Right 3 current", m_pdp.getCurrent(13));
+
   }
 
   @Override
   public void autonomousInit() {
+    System.out.println("[status]autonomousInit is running.");
     m_autoSelected = m_chooser.getSelected();
     //m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
     System.out.println("Auto selected: " + m_autoSelected);
+    m_lifterPID.resetError();
+    kZeroPosition = m_LifterMain.getSelectedSensorPosition();
   }
 
   /**
@@ -153,6 +223,7 @@ public class Robot extends TimedRobot {
    */ 
   @Override
   public void autonomousPeriodic() {
+    /*
     switch (m_autoSelected) {
       case kCustomAuto:
         // Put custom auto code here
@@ -162,50 +233,68 @@ public class Robot extends TimedRobot {
         // Put default auto code here
         break;
     }
+    */
+    double mid = 158;
+    int ret = pixy.getCCC().getBlocks(false, 1, 2);
+    if(ret > 0){
+      System.out.printf("Deceted %d:", ret);
+      for(int i = 0; i < ret; ++i){
+        System.out.printf("[%d]: x = %d", i+1, pixy.getCCC().getBlocks().get(i).getX());
+      }
+      System.out.println("");
+      if(ret == 2){
+        SmartDashboard.putString("Pixy status", "Deceted 2 successfully.");
+        mid = (double)( pixy.getCCC().getBlocks().get(0).getX() + pixy.getCCC().getBlocks().get(1).getX() ) / 2; 
+      }else{
+        SmartDashboard.putString("Pixy status", "Number of bolcks is " + Integer.toString(ret));
+      }
+    }else if(ret == Pixy2.PIXY_RESULT_OK){
+      SmartDashboard.putString("Pixy status", "Result OK, blocks not found.");
+    }else if(ret == Pixy2.PIXY_RESULT_BUSY){
+      SmartDashboard.putString("Pixy status", "data is not available");
+    }else if(ret == Pixy2.PIXY_RESULT_PROG_CHANGING){
+      SmartDashboard.putString("Pixy status", "RESULT_PROG_CHANGING");
+    }else{
+      SmartDashboard.putString("Pixy status", "Unknown error, ret=" + Integer.toString(ret));
+    }
+    double turnSpeed = m_pixyPID.calc(mid, 158.0);
+
+    if(m_xbox.getRawAxis(3) > 0.5){
+      m_robot.arcadeDrive(kRightSpeed, turnSpeed);   //CV PID control turn speed.
+    }else if(m_xbox.getRawButton(6)){
+      m_robot.arcadeDrive(kRightSpeed, 0);    //Drive straight when right button 4 is hold.
+    }else{
+      m_robot.tankDrive(kLeftSpeed, kRightSpeed);     //Tank drive.
+    }
   }
 
   @Override
   public void teleopPeriodic() {
+
+    if(m_xbox.getRawButton(6)){
+      m_robot.arcadeDrive(kRightSpeed, 0);    //Drive straight when right button 4 is hold.
+    }else{
+      m_robot.tankDrive(kLeftSpeed, kRightSpeed);     //Tank drive.
+    }
+
 /*
     if(m_Joystick.getRawButton(8)){kP += kPIncreace;}if(m_Joystick.getRawButton(7)){kP -= kPIncreace;}
     if(m_Joystick.getRawButton(10)){kI += kIIncreace;}if(m_Joystick.getRawButton(9)){kI -= kIIncreace;}
     if(m_Joystick.getRawButton(12)){kD += kDIncreace;}if(m_Joystick.getRawButton(11)){kD -= kDIncreace;}
 */
-
-    if(m_rightJoystick.getRawButton(3)){      //Fast key
-      kSlowRate = 1.0;
-    }else if(m_rightJoystick.getRawButton(4)){//Slow key
-      kSlowRate = 0.5;
+    if(m_testJoystick2.getRawButton(11)){
+      m_lifterPID.resetError();
     }
-
-    //Drive
-    m_robot.tankDrive(joystickOutput(-m_leftJoystick.getY(), 0.1) * kSlowRate, -joystickOutput(-m_rightJoystick.getY(), 0.1) * kSlowRate);
-
-    //Follow
-    m_leftFollower1.set(ControlMode.PercentOutput, m_leftMain.getMotorOutputPercent());
-    m_rightFollower1.set(ControlMode.PercentOutput, m_rightMain.getMotorOutputPercent());
-    
+ 
+    /*
     //Press "left bumber" to set zero position of the lifter
     if(m_lifterJoystick.getRawButton(7)){
       kZeroPosition = m_LifterMain.getSelectedSensorPosition();
     }
-
-    //Press right shoot to collect objects.
-    if(m_rightJoystick.getRawButton(1)){
-      m_intakeGreen.set(kIntakePower);
-      m_intakeGrey.set(kIntakePower);
-      SmartDashboard.putString("Intake status", "Collecting, " + kIntakePower);
-    }    
-    
-    //Press left key 3 to throw objects.
-    else if(m_leftJoystick.getRawButton(3)){
-      m_intakeGreen.set(-kIntakePower);
-      m_intakeGrey.set(-kIntakePower);
-      SmartDashboard.putString("Intake status", "Throwing, " + kIntakePower);
-    }
-    
+    */
     double processVar = 1 * (m_LifterMain.getSelectedSensorPosition() - kZeroPosition) * 0.004026699568199808; // = / 4096 * 5.25 * Math.PI;
     
+    /*
     if(m_lifterJoystick.getRawButton(1)){
       kSetPoint = 30;
       kLastLifterBtn = true;
@@ -224,45 +313,19 @@ public class Robot extends TimedRobot {
     }else if(m_lifterJoystick.getRawButton(6)){
       kSetPoint = 105;
       kLastLifterBtn = true;
-    }else if(kLastBtnX){
+    }else if(kLastLifterBtn){
       kSetPoint = processVar;
-      kLastBtnX = false;
+      kLastLifterBtn = false;
     }
+    */
 
+    //Test the lifter.
+    kSetPoint = ( -m_testJoystick2.getRawAxis(3) + 1 ) * 92;
     double output = m_lifterPID.calc(kSetPoint, processVar);
-
     m_LifterMain.set(ControlMode.PercentOutput, output);
-
-    //Test lifter.
-    //kSetPoint = ( -m_testJoystick2.getRawAxis(3) + 1 ) * 90;
 
     SmartDashboard.putNumber("LifterMain Current", m_LifterMain.getOutputCurrent());
     SmartDashboard.putNumber("LifterFollower Current", m_LifterFollower.getOutputCurrent());
-
-    //Press key to change solenoid's status
-    boolean btnX = m_leftJoystick.getRawButton(3);
-    if(!kLastBtnX && btnX){
-      kSolenoid = !kSolenoid;
-      if(kSolenoid){
-        m_doubleSolenoid.set(Value.kForward);
-      }else{
-        m_doubleSolenoid.set(Value.kReverse);
-      }
-    }
-    kLastBtnX = btnX;
-    SmartDashboard.putBoolean("Solenoid", kSolenoid);
-
-/*
-    if(kLastSwitcher && !m_switcher.get()){
-      kZeroPosition = m_LifterMain.getSensorCollection().getPulseWidthPosition();
-    }
-    kLastSwitcher = m_switcher.get();
- */
-
-    SmartDashboard.putNumber("Limit Switcher", m_switcher.getValue());
-
-    FRCPixyBlock pixyBlock = m_pixy2.getBlocks(0, 0);
-    pixyBlock.getX();
   }
 
   @Override

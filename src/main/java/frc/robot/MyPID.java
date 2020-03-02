@@ -18,6 +18,7 @@ public class MyPID {
     private double kMaxOutput = 1.0, kMinOutput = -1.0; 
     private String kName;
     private boolean kShowDebug = true;
+    private double kErrorTotal = 0;
     public MyPID(String name){
         kName = name;
     } 
@@ -34,13 +35,12 @@ public class MyPID {
     public double calc(double setPoint, double processVar){
         double error = setPoint - processVar;
         double errorRate = 0;
-        double errorTotal = 0;
         if(kLastError != 0){
             errorRate = error - kLastError;
         }
         kLastError = error;
-        errorTotal += error;
-        double output = error * kP + errorTotal * kI + errorRate * kD + kF;
+        kErrorTotal += error;
+        double output = error * kP + kErrorTotal * kI + errorRate * kD + kF;
         output = output > kMaxOutput ? kMaxOutput : output;
         output = output < kMinOutput ? kMinOutput : output;
         if(kShowDebug){
@@ -51,9 +51,12 @@ public class MyPID {
             SmartDashboard.putNumber(kName+"'s "+"setPoint", setPoint);
             SmartDashboard.putNumber(kName+"'s "+"error", error);
             SmartDashboard.putNumber(kName+"'s "+"errorRate", errorRate);
-            SmartDashboard.putNumber(kName+"'s "+"errorTotal", errorTotal);
+            SmartDashboard.putNumber(kName+"'s "+"kErrorTotal", kErrorTotal);
             SmartDashboard.putNumber(kName+"'s "+"output", output);
         }
         return output;
+    }
+    public void resetError(){
+        kErrorTotal = 0;
     }
 }
